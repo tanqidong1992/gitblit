@@ -70,7 +70,7 @@ public class TreePage extends RepositoryPage {
 			if (path.lastIndexOf('/') > -1) {
 				parentPath = path.substring(0, path.lastIndexOf('/'));
 			}
-			PathModel model = new PathModel("..", parentPath, 0, FileMode.TREE.getBits(), null, objectId);
+			PathModel model = new PathModel("..", parentPath, false, 0, FileMode.TREE.getBits(), null, objectId);
 			model.isParentPath = true;
 			paths.add(0, model);
 		}

@@ -28,6 +28,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.io.filefilter.TrueFileFilter;
@@ -42,6 +43,7 @@ import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.diff.RawTextComparator;
 import org.eclipse.jgit.errors.ConfigInvalidException;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
+import org.eclipse.jgit.errors.LargeObjectException;
 import org.eclipse.jgit.errors.MissingObjectException;
 import org.eclipse.jgit.errors.StopWalkException;
 import org.eclipse.jgit.lib.BlobBasedConfig;
@@ -84,12 +86,15 @@ import org.eclipse.jgit.util.FS;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.gitblit.GitBlit;
 import com.gitblit.GitBlitException;
+import com.gitblit.manager.GitblitManager;
 import com.gitblit.models.GitNote;
 import com.gitblit.models.PathModel;
 import com.gitblit.models.PathModel.PathChangeModel;
 import com.gitblit.models.RefModel;
 import com.gitblit.models.SubmoduleModel;
+import com.gitblit.servlet.FilestoreServlet;
 import com.google.common.base.Strings;
 
 /**
@@ -1167,6 +1172,8 @@ public class JGitUtils {
 	private static PathModel getPathModel(TreeWalk tw, String basePath, RevCommit commit) {
 		String name;
 		long size = 0;
+		boolean filestoreItem = false;
+		
 		if (StringUtils.isEmpty(basePath)) {
 			name = tw.getPathString();
 		} else {
@@ -1175,13 +1182,48 @@ public class JGitUtils {
 		ObjectId objectId = tw.getObjectId(0);
 		try {
 			if (!tw.isSubtree() && (tw.getFileMode(0) != FileMode.GITLINK)) {
+				//NOTE: When JGit supports LFS, this should return the filestore item size seamlessly
 				size = tw.getObjectReader().getObjectSize(objectId, Constants.OBJ_BLOB);
+				
+				if (isPossibleFilestoreItem(size)) {
+					String filestorePointer = readFilestorePointer(tw.getObjectReader().open(objectId));
+					if (filestorePointer != null) {
+						//TODO contact filestore cache and ask for size
+						filestoreItem = true;
+					}
+				}
 			}
 		} catch (Throwable t) {
 			error(t, null, "failed to retrieve blob size for " + tw.getPathString());
 		}
-		return new PathModel(name, tw.getPathString(), size, tw.getFileMode(0).getBits(),
+		return new PathModel(name, tw.getPathString(), filestoreItem, size, tw.getFileMode(0).getBits(),
 				objectId.getName(), commit.getName());
+	}
+	
+	private static boolean isPossibleFilestoreItem(long size) {
+		return (   (size >= com.gitblit.Constants.LEN_FILESTORE_META_MIN) 
+				&& (size <= com.gitblit.Constants.LEN_FILESTORE_META_MAX));
+	}
+	
+	/**
+	 * 
+	 * @return Filestore pointer hash if valid filestore item, otherwise null
+	 */
+	private static String readFilestorePointer(ObjectLoader obj){
+		try {
+			byte[] blob = obj.getCachedBytes(com.gitblit.Constants.LEN_FILESTORE_META_MAX);
+			String meta = new String(blob, "UTF-8");
+			if (meta.contains("version https://git-lfs.github.com/spec/v1")) {
+				//TODO: Regex on ("oid sha256:([a-fA-F0-9]{64})"
+			}
+			
+		} catch (LargeObjectException e) {
+			//Intentionally failing silent
+		} catch (Exception e) {
+			//TODO: Log
+		}
+		
+		return null;
 	}
 
 	/**
@@ -1197,11 +1239,21 @@ public class JGitUtils {
 			throws IOException {
 
 		long size = 0;
+		boolean filestoreItem = false;
 		TreeWalk tw = TreeWalk.forPath(repo, path, commit.getTree());
 		String pathString = path;
 
 			if (!tw.isSubtree() && (tw.getFileMode(0) != FileMode.GITLINK)) {
 				size = tw.getObjectReader().getObjectSize(tw.getObjectId(0), Constants.OBJ_BLOB);
+				
+				if (isPossibleFilestoreItem(size)) {
+					String filestorePointer = readFilestorePointer(tw.getObjectReader().open(tw.getObjectId(0)));
+					if (filestorePointer != null) {
+						//TODO contact filestore cache and ask for size
+						filestoreItem = true;
+					}
+				}
+				
 				pathString = PathUtils.getLastPathComponent(pathString);
 
 			} else if (tw.isSubtree()) {
@@ -1217,7 +1269,7 @@ public class JGitUtils {
 				}
 			}
 
-			return new PathModel(pathString, tw.getPathString(), size, tw.getFileMode(0).getBits(),
+			return new PathModel(pathString, tw.getPathString(), filestoreItem, size, tw.getFileMode(0).getBits(),
 					tw.getObjectId(0).getName(), commit.getName());
 
 

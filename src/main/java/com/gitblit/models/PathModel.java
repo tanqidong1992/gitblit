@@ -34,15 +34,17 @@ public class PathModel implements Serializable, Comparable<PathModel> {
 
 	public final String name;
 	public final String path;
+	public final boolean isFilestoreItem;
 	public final long size;
 	public final int mode;
 	public final String objectId;
 	public final String commitId;
 	public boolean isParentPath;
-
-	public PathModel(String name, String path, long size, int mode, String objectId, String commitId) {
+	
+	public PathModel(String name, String path, boolean filestoreItem, long size, int mode, String objectId, String commitId) {
 		this.name = name;
 		this.path = path;
+		this.isFilestoreItem = filestoreItem;
 		this.size = size;
 		this.mode = mode;
 		this.objectId = objectId;
@@ -121,7 +123,8 @@ public class PathModel implements Serializable, Comparable<PathModel> {
 
 		public PathChangeModel(String name, String path, long size, int mode, String objectId,
 				String commitId, ChangeType type) {
-			super(name, path, size, mode, objectId, commitId);
+			//TODO: Identify correct action on filestore flag
+			super(name, path, false, size, mode, objectId, commitId);
 			this.changeType = type;
 		}
 
