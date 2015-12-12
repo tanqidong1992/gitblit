@@ -89,6 +89,7 @@ import org.slf4j.LoggerFactory;
 import com.gitblit.GitBlit;
 import com.gitblit.GitBlitException;
 import com.gitblit.manager.GitblitManager;
+import com.gitblit.models.FilestoreModel;
 import com.gitblit.models.GitNote;
 import com.gitblit.models.PathModel;
 import com.gitblit.models.PathModel.PathChangeModel;
@@ -1182,14 +1183,19 @@ public class JGitUtils {
 		ObjectId objectId = tw.getObjectId(0);
 		try {
 			if (!tw.isSubtree() && (tw.getFileMode(0) != FileMode.GITLINK)) {
-				//NOTE: When JGit supports LFS, this should return the filestore item size seamlessly
+
 				size = tw.getObjectReader().getObjectSize(objectId, Constants.OBJ_BLOB);
-				
+
+				//NOTE: When JGit supports LFS, it should return the filestore item size and oid
+				//		Gitblit will just have to prepend a user/admin defined LFS path
 				if (isPossibleFilestoreItem(size)) {
-					String filestorePointer = readFilestorePointer(tw.getObjectReader().open(objectId));
+					FilestoreModel filestorePointer = getFilestoreItem(tw.getObjectReader().open(objectId));
 					if (filestorePointer != null) {
-						//TODO contact filestore cache and ask for size
 						filestoreItem = true;
+						size = filestorePointer.getSize();
+						
+						return new PathModel(name, tw.getPathString(), filestoreItem, size, tw.getFileMode(0).getBits(),
+								objectId.getName(), commit.getName());
 					}
 				}
 			}
@@ -1207,16 +1213,15 @@ public class JGitUtils {
 	
 	/**
 	 * 
-	 * @return Filestore pointer hash if valid filestore item, otherwise null
+	 * @return Representative FilestoreModel if valid, otherwise null
 	 */
-	private static String readFilestorePointer(ObjectLoader obj){
+	private static FilestoreModel getFilestoreItem(ObjectLoader obj){
 		try {
-			byte[] blob = obj.getCachedBytes(com.gitblit.Constants.LEN_FILESTORE_META_MAX);
-			String meta = new String(blob, "UTF-8");
-			if (meta.contains("version https://git-lfs.github.com/spec/v1")) {
-				//TODO: Regex on ("oid sha256:([a-fA-F0-9]{64})"
-			}
-			
+			final byte[] blob = obj.getCachedBytes(com.gitblit.Constants.LEN_FILESTORE_META_MAX);
+			final String meta = new String(blob, "UTF-8");
+		
+			return FilestoreModel.fromMetaString(meta);
+
 		} catch (LargeObjectException e) {
 			//Intentionally failing silent
 		} catch (Exception e) {
@@ -1243,35 +1248,39 @@ public class JGitUtils {
 		TreeWalk tw = TreeWalk.forPath(repo, path, commit.getTree());
 		String pathString = path;
 
-			if (!tw.isSubtree() && (tw.getFileMode(0) != FileMode.GITLINK)) {
-				size = tw.getObjectReader().getObjectSize(tw.getObjectId(0), Constants.OBJ_BLOB);
-				
-				if (isPossibleFilestoreItem(size)) {
-					String filestorePointer = readFilestorePointer(tw.getObjectReader().open(tw.getObjectId(0)));
-					if (filestorePointer != null) {
-						//TODO contact filestore cache and ask for size
-						filestoreItem = true;
-					}
-				}
-				
-				pathString = PathUtils.getLastPathComponent(pathString);
+		if (!tw.isSubtree() && (tw.getFileMode(0) != FileMode.GITLINK)) {
 
-			} else if (tw.isSubtree()) {
+			pathString = PathUtils.getLastPathComponent(pathString);
+			
+			size = tw.getObjectReader().getObjectSize(tw.getObjectId(0), Constants.OBJ_BLOB);
+			
+			if (isPossibleFilestoreItem(size)) {
+				FilestoreModel filestorePointer = getFilestoreItem(tw.getObjectReader().open(tw.getObjectId(0)));
 
-				// do not display dirs that are behind in the path
-				if (!Strings.isNullOrEmpty(filter)) {
-					pathString = path.replaceFirst(filter + "/", "");
-				}
-
-				// remove the last slash from path in displayed link
-				if (pathString != null && pathString.charAt(pathString.length()-1) == '/') {
-					pathString = pathString.substring(0, pathString.length()-1);
+				if (filestorePointer != null) {
+					filestoreItem = true;
+					size = filestorePointer.getSize();
+					
+					return new PathModel(pathString, filestorePointer.oid, 
+										 filestoreItem, size, tw.getFileMode(0).getBits(),
+										 tw.getObjectId(0).getName(), commit.getName());
 				}
 			}
+		} else if (tw.isSubtree()) {
 
-			return new PathModel(pathString, tw.getPathString(), filestoreItem, size, tw.getFileMode(0).getBits(),
-					tw.getObjectId(0).getName(), commit.getName());
+			// do not display dirs that are behind in the path
+			if (!Strings.isNullOrEmpty(filter)) {
+				pathString = path.replaceFirst(filter + "/", "");
+			}
 
+			// remove the last slash from path in displayed link
+			if (pathString != null && pathString.charAt(pathString.length()-1) == '/') {
+				pathString = pathString.substring(0, pathString.length()-1);
+			}
+		}
+
+		return new PathModel(pathString, tw.getPathString(), filestoreItem, size, tw.getFileMode(0).getBits(),
+				tw.getObjectId(0).getName(), commit.getName());
 
 	}
 

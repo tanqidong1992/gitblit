@@ -29,6 +29,7 @@ import org.eclipse.jgit.lib.FileMode;
 import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 
+import com.gitblit.Constants;
 import com.gitblit.models.PathModel;
 import com.gitblit.models.SubmoduleModel;
 import com.gitblit.servlet.RawServlet;
@@ -76,6 +77,8 @@ public class TreePage extends RepositoryPage {
 		}
 
 		final String id = getBestCommitId(commit);
+		final String filestoreId = Constants.R_LFS;
+		
 		final ByteFormat byteFormat = new ByteFormat();
 		final String baseUrl = WicketUtils.getGitblitURL(getRequest());
 
@@ -161,11 +164,14 @@ public class TreePage extends RepositoryPage {
 
 						// links
 						Fragment links = new Fragment("pathLinks", "blobLinks", this);
+						String refId = entry.isFilestoreItem ? filestoreId : id;
+						
 						links.add(new BookmarkablePageLink<Void>("view", BlobPage.class,
-								WicketUtils.newPathParameter(repositoryName, id,
+								WicketUtils.newPathParameter(repositoryName, refId,
 										path)));
-						String rawUrl = RawServlet.asLink(getContextUrl(), repositoryName, id, path);
+						String rawUrl = RawServlet.asLink(getContextUrl(), repositoryName, refId, path);
 						links.add(new ExternalLink("raw", rawUrl));
+						
 						links.add(new BookmarkablePageLink<Void>("blame", BlamePage.class,
 								WicketUtils.newPathParameter(repositoryName, id,
 										path)));
