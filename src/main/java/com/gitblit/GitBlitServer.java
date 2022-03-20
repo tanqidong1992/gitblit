@@ -168,8 +168,6 @@ public class GitBlitServer {
 			out.write("\r\n".getBytes());
 			out.flush();
 			s.close();
-		} catch (UnknownHostException e) {
-			e.printStackTrace();
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
