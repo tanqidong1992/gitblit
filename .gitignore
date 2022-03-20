@@ -17,7 +17,6 @@ tags
 /build-demo.xml
 *.directory
 /.gradle
-/pom.xml
 /x509test
 /data
 /*.conf
